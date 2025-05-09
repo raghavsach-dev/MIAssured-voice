@@ -25,26 +25,7 @@ CHANNELS = 1
 RECEIVE_SAMPLE_RATE = 24000
 
 # API keys list - hardcoded for private repo
-API_KEYS = ["AIzaSyDxt6OFilvmOGCohVU-Lk110L4vcKpt8Yw",
-"AIzaSyDk4BK6cb7dakuPOTSApVgl6qaCZ-DMZGQ",
-"AIzaSyACs4pwIhUbQT1iBVF7p7pMYyoIjSR77fk",
-"AIzaSyBoZwMjtQbC-UEPK-a5XRAAtNik1DYY_8c",
-"AIzaSyA5nJsP5e_MCEM3i0UE12-PKTRlk8-MaWA",
-"AIzaSyCE7Nzki1uiDqysW1I6fzTXWvXj9QhDKP4",
-"AIzaSyBwCXA22KuqIC59CvLJVAYiuoNutoVhdno",
-"AIzaSyChnACA8hhiaqUuLK_cn1bHlHOeNfNDpL4",
-"AIzaSyBzSWAYSeaYRp7QM66Zvy5isVwmAPgPBkk",
-"AIzaSyCbJcF5npBxMk0WjDsG1Yd5EyYmnEjCYic",
-"AIzaSyC9OLX_jIz256TUsA_BHkFuMTs7b2V6GBM",
-"AIzaSyC4RqGpaaacbQNdfZE8pjcqv7hjLWIpHEA",
-"AIzaSyDgcEmCmO6dcEr9dFl5ylVE7bPhHKqw3xI",
-"AIzaSyBFROU2GlFp_oy22_Ff5v8HIdprh6xDIMc",
-"AIzaSyCY0IXljzIUbto9cALbZtcZpN6VZxR0l_I",
-"AIzaSyBoW809DQokDLEcGQOsvi2-2vMqlqwT4jA",
-"AIzaSyAPN991PlxeCkqyffvHR6cEvca5UjeJvYI",
-"AIzaSyAtv3dUZyWopNCrb8XDqnw9_GGvFWdfHK8",
-"AIzaSyBZGVTlKeqJeul0lK2ossg1aqUxUUyRUyA",
-"AIzaSyAEjmoTDTdGk-4OVAwT3gcP5AztvpSNciw"]
+API_KEYS = ["AIzaSyCRJSKZ3XJ5Ka_LAmCdb1Fnd5TwVzAs5bQ"];
 
 # API key rotation settings
 RANDOM_KEY_PER_SESSION = True  # Set to True to use a random key for each new session
@@ -81,8 +62,6 @@ def get_random_api_key():
 # Model and config
 MODEL = "models/gemini-2.0-flash-live-001"
 
-# Initial prompt URL
-PROMPT_URL = "https://gist.githubusercontent.com/shudveta/6826b7063ca934a799f191a14797e05f/raw/83192b8d1359b96a6989c3c001306b028baf861a/prompt-voice.txt"
 
 # Active client sessions
 active_sessions = {}
@@ -261,7 +240,37 @@ class AudioSessionHandler:
                 message = await self.websocket.receive_text()
                 data = json.loads(message)
                 
-                if data["type"] == "audio":
+                if data["type"] == "prompt":
+                    # Handle custom prompt from frontend
+                    custom_prompt = data["data"]
+                    print(f"[{self.session_id}] Received custom prompt from frontend: {len(custom_prompt)} characters")
+                    
+                    # Send the custom prompt to Gemini if session is active
+                    if self.session:
+                        print(f"[{self.session_id}] Sending custom prompt to Gemini")
+                        # Try different send methods as in the original code
+                        try:
+                            await self.session.send(input=custom_prompt, end_of_turn=True)
+                            print(f"[{self.session_id}] Used session.send with end_of_turn")
+                        except TypeError as e:
+                            print(f"[{self.session_id}] Error with session.send + end_of_turn: {e}")
+                            try:
+                                await self.session.send(input=custom_prompt)
+                                print(f"[{self.session_id}] Used session.send without end_of_turn")
+                            except Exception as e2:
+                                print(f"[{self.session_id}] Error with simple session.send: {e2}")
+                                try:
+                                    await self.session.send_client_content(custom_prompt)
+                                    print(f"[{self.session_id}] Used session.send_client_content")
+                                except Exception as e3:
+                                    print(f"[{self.session_id}] Failed to send custom prompt: {e3}")
+                    
+                    # Send acknowledgment back to client
+                    await self.safe_send_text(json.dumps({
+                        "type": "status",
+                        "data": "Custom prompt received and processed"
+                    }))
+                elif data["type"] == "audio":
                     # Process audio from browser
                     audio_bytes = base64.b64decode(data["data"])
                     await self.out_queue.put({"data": audio_bytes, "mime_type": "audio/pcm"})
